@@ -1,4 +1,3 @@
-<!-- 📄 admin.html - 導師端後台管理頁面 -->
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -12,7 +11,7 @@
     .group-card { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
     .group-card h5 { margin-bottom: 0.5rem; }
     pre { white-space: pre-wrap; word-break: break-word; }
-    table td, table th { text-align: center; vertical-align: middle; }
+    .table th, .table td { text-align: center; }
   </style>
 </head>
 <body class="container py-4">
@@ -27,26 +26,21 @@
     <div id="timeList" class="mb-4"></div>
   </section>
 
+  <section class="mt-5">
+    <h4>時間總表（老師安排用）</h4>
+    <div class="table-responsive">
+      <table class="table table-bordered align-middle text-center" id="timeMatrixTable">
+        <thead>
+          <tr></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
   <section>
     <h4>所有小組資料</h4>
     <div id="groupContainer"></div>
-  </section>
-
-  <section class="mt-5">
-    <h4>各組可參加時段對照表</h4>
-    <div class="table-responsive">
-      <table class="table table-bordered" id="timeMatrixTable">
-        <thead class="table-light">
-          <tr>
-            <th>組別</th>
-            <!-- 動態插入時間欄位 -->
-          </tr>
-        </thead>
-        <tbody>
-          <!-- 組別資料列 -->
-        </tbody>
-      </table>
-    </div>
   </section>
 
   <script>
@@ -81,7 +75,6 @@
       times.splice(index, 1);
       await db.collection("settings").doc("timeOptions").set({ options: times });
       loadTimeOptions();
-      renderTimeMatrix(); // 重新渲染對照表
     }
 
     timeForm.addEventListener("submit", async (e) => {
@@ -93,7 +86,6 @@
         await db.collection("settings").doc("timeOptions").set({ options });
         newTime.value = "";
         loadTimeOptions();
-        renderTimeMatrix(); // 重新渲染對照表
       }
     });
 
@@ -108,12 +100,10 @@
             <p><strong>組員：</strong>${(d.members || []).join(", ")}</p>
             <p><strong>時間：</strong>${(d.timeOptions || []).join(", ")}</p>
             <p><strong>餐廳建議：</strong>${(d.restaurants || []).join(", ")}</p>
-            <p><strong>備註：</strong>${d.note || ""}</p>
             <p><a href="submit.html?group=${doc.id}" target="_blank">✏️ 前往編輯</a></p>
           </div>
         `;
       }).join("");
-      renderTimeMatrix(); // 載入完 group 後也渲染表格
     }
 
     async function renderTimeMatrix() {
@@ -126,36 +116,91 @@
         times: doc.data().timeOptions || [],
       }));
 
+      // 載入老師選的勾勾
+      const adminDoc = await db.collection("settings").doc("adminSelections").get();
+      const adminSelections = adminDoc.data()?.selections || {};
+
       const table = document.getElementById("timeMatrixTable");
       const theadRow = table.querySelector("thead tr");
       theadRow.innerHTML = "<th>組別</th>";
-      allTimes.forEach(t => {
+      allTimes.forEach((t, idx) => {
         const th = document.createElement("th");
         th.textContent = t;
+        th.dataset.colIndex = idx;
         theadRow.appendChild(th);
       });
 
       const tbody = table.querySelector("tbody");
       tbody.innerHTML = "";
-      groups.forEach(g => {
+      groups.forEach((g, rowIndex) => {
         const tr = document.createElement("tr");
         const nameTd = document.createElement("td");
         nameTd.textContent = g.name;
         tr.appendChild(nameTd);
 
-        allTimes.forEach(t => {
+        allTimes.forEach((t, colIndex) => {
           const td = document.createElement("td");
-          td.innerHTML = g.times.includes(t) ? "✅" : "";
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.dataset.group = g.name;
+          checkbox.dataset.time = t;
+
+          // 根據老師選的資料來設定初始勾選
+          const groupSelectedTimes = adminSelections[g.name] || [];
+          if (groupSelectedTimes.includes(t)) checkbox.checked = true;
+
+          checkbox.addEventListener("change", async () => {
+            const group = checkbox.dataset.group;
+            const time = checkbox.dataset.time;
+
+            if (!adminSelections[group]) adminSelections[group] = [];
+
+            if (checkbox.checked) {
+              if (!adminSelections[group].includes(time)) {
+                adminSelections[group].push(time);
+              }
+            } else {
+              adminSelections[group] = adminSelections[group].filter(t => t !== time);
+            }
+
+            await db.collection("settings").doc("adminSelections").set({
+              selections: adminSelections
+            });
+
+            highlightSelectedTimes(allTimes);
+          });
+
+          td.appendChild(checkbox);
           tr.appendChild(td);
         });
 
         tbody.appendChild(tr);
       });
+
+      highlightSelectedTimes(allTimes);
     }
 
-    // 初始載入
+    function highlightSelectedTimes(allTimes) {
+      const table = document.getElementById("timeMatrixTable");
+      const numCols = table.querySelector("thead tr").children.length - 1;
+
+      for (let col = 0; col < numCols; col++) {
+        let hasChecked = false;
+        const rows = table.querySelectorAll("tbody tr");
+        rows.forEach(row => {
+          const td = row.children[col + 1];
+          const checkbox = td.querySelector("input[type='checkbox']");
+          if (checkbox?.checked) hasChecked = true;
+        });
+
+        const th = table.querySelector("thead tr").children[col + 1];
+        th.style.backgroundColor = hasChecked ? "#f0f0f0" : "";
+      }
+    }
+
     loadTimeOptions();
     loadGroups();
+    renderTimeMatrix();
   </script>
 </body>
 </html>
