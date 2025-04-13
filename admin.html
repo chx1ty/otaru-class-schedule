@@ -1,4 +1,4 @@
-<!-- 📄 admin.html - 導師端後台管理頁面（已加上備註欄位） -->
+<!-- 📄 admin.html - 導師端後台管理頁面 -->
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -12,6 +12,7 @@
     .group-card { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
     .group-card h5 { margin-bottom: 0.5rem; }
     pre { white-space: pre-wrap; word-break: break-word; }
+    table td, table th { text-align: center; vertical-align: middle; }
   </style>
 </head>
 <body class="container py-4">
@@ -29,6 +30,23 @@
   <section>
     <h4>所有小組資料</h4>
     <div id="groupContainer"></div>
+  </section>
+
+  <section class="mt-5">
+    <h4>各組可參加時段對照表</h4>
+    <div class="table-responsive">
+      <table class="table table-bordered" id="timeMatrixTable">
+        <thead class="table-light">
+          <tr>
+            <th>組別</th>
+            <!-- 動態插入時間欄位 -->
+          </tr>
+        </thead>
+        <tbody>
+          <!-- 組別資料列 -->
+        </tbody>
+      </table>
+    </div>
   </section>
 
   <script>
@@ -63,6 +81,7 @@
       times.splice(index, 1);
       await db.collection("settings").doc("timeOptions").set({ options: times });
       loadTimeOptions();
+      renderTimeMatrix(); // 重新渲染對照表
     }
 
     timeForm.addEventListener("submit", async (e) => {
@@ -74,6 +93,7 @@
         await db.collection("settings").doc("timeOptions").set({ options });
         newTime.value = "";
         loadTimeOptions();
+        renderTimeMatrix(); // 重新渲染對照表
       }
     });
 
@@ -93,8 +113,47 @@
           </div>
         `;
       }).join("");
+      renderTimeMatrix(); // 載入完 group 後也渲染表格
     }
 
+    async function renderTimeMatrix() {
+      const settingsDoc = await db.collection("settings").doc("timeOptions").get();
+      const allTimes = settingsDoc.data()?.options || [];
+
+      const groupSnap = await db.collection("groups").get();
+      const groups = groupSnap.docs.map(doc => ({
+        name: doc.data().groupName,
+        times: doc.data().timeOptions || [],
+      }));
+
+      const table = document.getElementById("timeMatrixTable");
+      const theadRow = table.querySelector("thead tr");
+      theadRow.innerHTML = "<th>組別</th>";
+      allTimes.forEach(t => {
+        const th = document.createElement("th");
+        th.textContent = t;
+        theadRow.appendChild(th);
+      });
+
+      const tbody = table.querySelector("tbody");
+      tbody.innerHTML = "";
+      groups.forEach(g => {
+        const tr = document.createElement("tr");
+        const nameTd = document.createElement("td");
+        nameTd.textContent = g.name;
+        tr.appendChild(nameTd);
+
+        allTimes.forEach(t => {
+          const td = document.createElement("td");
+          td.innerHTML = g.times.includes(t) ? "✅" : "";
+          tr.appendChild(td);
+        });
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    // 初始載入
     loadTimeOptions();
     loadGroups();
   </script>
