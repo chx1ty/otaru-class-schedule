@@ -1,4 +1,4 @@
-<!-- 📄 admin.html - 導師端後台管理頁面 -->
+<!-- 📄 admin.html - 導師端後台管理頁面（已加上備註欄位） -->
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -88,6 +88,7 @@
             <p><strong>組員：</strong>${(d.members || []).join(", ")}</p>
             <p><strong>時間：</strong>${(d.timeOptions || []).join(", ")}</p>
             <p><strong>餐廳建議：</strong>${(d.restaurants || []).join(", ")}</p>
+            <p><strong>備註：</strong>${d.note || ""}</p>
             <p><a href="submit.html?group=${doc.id}" target="_blank">✏️ 前往編輯</a></p>
           </div>
         `;
