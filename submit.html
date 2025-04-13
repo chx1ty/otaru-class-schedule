@@ -1,4 +1,4 @@
-<!-- 📄 submit.html - 改用 EmailJS v3 SDK，移除 init()，修復寄信錯誤 -->
+<!-- 📄 submit.html - EmailJS 寄信修正 + 編輯模式也檢查小組名稱重複 -->
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -55,7 +55,6 @@
     const db = firebase.firestore();
 
     const urlParams = new URLSearchParams(window.location.search);
-    const isEditMode = urlParams.get("group") !== null;
     const groupId = urlParams.get("group") || db.collection("groups").doc().id;
 
     const groupForm = document.getElementById("groupForm");
@@ -139,13 +138,12 @@
         return;
       }
 
-      if (!urlParams.get("group")) {
-        const dupSnap = await db.collection("groups").where("groupName", "==", groupNameInput).get();
-        if (!dupSnap.empty) {
-          alert("已有其他小組使用相同名稱，請換一個小組名稱！");
-          submitBtn.disabled = false;
-          return;
-        }
+      const dupSnap = await db.collection("groups").where("groupName", "==", groupNameInput).get();
+      const isDuplicate = dupSnap.docs.some(doc => doc.id !== groupId);
+      if (isDuplicate) {
+        alert("已有其他小組使用相同名稱，請換一個小組名稱！");
+        submitBtn.disabled = false;
+        return;
       }
 
       const data = {
@@ -161,7 +159,7 @@
       statusMsg.innerText = `✅ 已儲存！你可以用以下連結再次編輯此小組：\n${link}`;
       statusMsg.className = "success";
 
-      await emailjs.send("service_b2n79cs", "template_4r3k9fq", {
+      emailjs.send("service_b2n79cs", "template_4r3k9fq", {
         to_email: email,
         group_name: data.groupName,
         edit_url: link,
