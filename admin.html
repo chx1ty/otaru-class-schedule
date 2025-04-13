@@ -116,6 +116,9 @@
         times: doc.data().timeOptions || [],
       }));
 
+      // 只顯示有組別填寫過的時段
+      const availableTimes = new Set(groups.flatMap(group => group.times));
+
       // 載入老師選的勾勾
       const adminDoc = await db.collection("settings").doc("adminSelections").get();
       const adminSelections = adminDoc.data()?.selections || {};
@@ -124,10 +127,12 @@
       const theadRow = table.querySelector("thead tr");
       theadRow.innerHTML = "<th>組別</th>";
       allTimes.forEach((t, idx) => {
-        const th = document.createElement("th");
-        th.textContent = t;
-        th.dataset.colIndex = idx;
-        theadRow.appendChild(th);
+        if (availableTimes.has(t)) {  // 只顯示有填寫的時段
+          const th = document.createElement("th");
+          th.textContent = t;
+          th.dataset.colIndex = idx;
+          theadRow.appendChild(th);
+        }
       });
 
       const tbody = table.querySelector("tbody");
@@ -139,39 +144,41 @@
         tr.appendChild(nameTd);
 
         allTimes.forEach((t, colIndex) => {
-          const td = document.createElement("td");
-          const checkbox = document.createElement("input");
-          checkbox.type = "checkbox";
-          checkbox.dataset.group = g.name;
-          checkbox.dataset.time = t;
+          if (availableTimes.has(t)) {  // 只顯示有填寫的時段
+            const td = document.createElement("td");
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.dataset.group = g.name;
+            checkbox.dataset.time = t;
 
-          // 根據老師選的資料來設定初始勾選
-          const groupSelectedTimes = adminSelections[g.name] || [];
-          if (groupSelectedTimes.includes(t)) checkbox.checked = true;
+            // 根據老師選的資料來設定初始勾選
+            const groupSelectedTimes = adminSelections[g.name] || [];
+            if (groupSelectedTimes.includes(t)) checkbox.checked = true;
 
-          checkbox.addEventListener("change", async () => {
-            const group = checkbox.dataset.group;
-            const time = checkbox.dataset.time;
+            checkbox.addEventListener("change", async () => {
+              const group = checkbox.dataset.group;
+              const time = checkbox.dataset.time;
 
-            if (!adminSelections[group]) adminSelections[group] = [];
+              if (!adminSelections[group]) adminSelections[group] = [];
 
-            if (checkbox.checked) {
-              if (!adminSelections[group].includes(time)) {
-                adminSelections[group].push(time);
+              if (checkbox.checked) {
+                if (!adminSelections[group].includes(time)) {
+                  adminSelections[group].push(time);
+                }
+              } else {
+                adminSelections[group] = adminSelections[group].filter(t => t !== time);
               }
-            } else {
-              adminSelections[group] = adminSelections[group].filter(t => t !== time);
-            }
 
-            await db.collection("settings").doc("adminSelections").set({
-              selections: adminSelections
+              await db.collection("settings").doc("adminSelections").set({
+                selections: adminSelections
+              });
+
+              highlightSelectedTimes(allTimes);
             });
 
-            highlightSelectedTimes(allTimes);
-          });
-
-          td.appendChild(checkbox);
-          tr.appendChild(td);
+            td.appendChild(checkbox);
+            tr.appendChild(td);
+          }
         });
 
         tbody.appendChild(tr);
