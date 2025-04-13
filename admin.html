@@ -1,0 +1,101 @@
+<!-- 📄 admin.html - 導師端後台管理頁面 -->
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>導生聚餐 - 老師後台</title>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    .group-card { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    .group-card h5 { margin-bottom: 0.5rem; }
+    pre { white-space: pre-wrap; word-break: break-word; }
+  </style>
+</head>
+<body class="container py-4">
+  <h1 class="mb-4">導生聚餐 - 老師後台管理頁面</h1>
+
+  <section class="mb-4">
+    <h4>設定可選時間</h4>
+    <form id="timeForm" class="d-flex flex-wrap gap-2 mb-3">
+      <input type="text" id="newTime" class="form-control w-auto" placeholder="例如 4/18 19:00-21:00" />
+      <button type="submit" class="btn btn-primary">新增時間</button>
+    </form>
+    <div id="timeList" class="mb-4"></div>
+  </section>
+
+  <section>
+    <h4>所有小組資料</h4>
+    <div id="groupContainer"></div>
+  </section>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyA_rWFX4gj_no08Q9-iA2iVsmgULfrCu5I",
+      authDomain: "otaru-class-schedule.firebaseapp.com",
+      projectId: "otaru-class-schedule",
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const timeForm = document.getElementById("timeForm");
+    const newTime = document.getElementById("newTime");
+    const timeList = document.getElementById("timeList");
+    const groupContainer = document.getElementById("groupContainer");
+
+    async function loadTimeOptions() {
+      const doc = await db.collection("settings").doc("timeOptions").get();
+      const data = doc.data();
+      const times = (data?.options || []);
+      timeList.innerHTML = times.map((t, i) =>
+        `<div class='d-flex align-items-center mb-1'>
+          <span class='me-2'>${t}</span>
+          <button class='btn btn-sm btn-outline-danger' onclick='removeTime(${i})'>刪除</button>
+        </div>`
+      ).join("");
+    }
+
+    async function removeTime(index) {
+      const doc = await db.collection("settings").doc("timeOptions").get();
+      const times = doc.data().options;
+      times.splice(index, 1);
+      await db.collection("settings").doc("timeOptions").set({ options: times });
+      loadTimeOptions();
+    }
+
+    timeForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const doc = await db.collection("settings").doc("timeOptions").get();
+      const options = (doc.data()?.options || []);
+      if (newTime.value.trim()) {
+        options.push(newTime.value.trim());
+        await db.collection("settings").doc("timeOptions").set({ options });
+        newTime.value = "";
+        loadTimeOptions();
+      }
+    });
+
+    async function loadGroups() {
+      const snap = await db.collection("groups").get();
+      groupContainer.innerHTML = snap.docs.map(doc => {
+        const d = doc.data();
+        return `
+          <div class="group-card">
+            <h5>${d.groupName}</h5>
+            <p><strong>組長 Email：</strong>${d.leaderEmail || "-"}</p>
+            <p><strong>組員：</strong>${(d.members || []).join(", ")}</p>
+            <p><strong>時間：</strong>${(d.timeOptions || []).join(", ")}</p>
+            <p><strong>餐廳建議：</strong>${(d.restaurants || []).join(", ")}</p>
+            <p><a href="submit.html?group=${doc.id}" target="_blank">✏️ 前往編輯</a></p>
+          </div>
+        `;
+      }).join("");
+    }
+
+    loadTimeOptions();
+    loadGroups();
+  </script>
+</body>
+</html>
