@@ -12,6 +12,7 @@
     .group-card h5 { margin-bottom: 0.5rem; }
     pre { white-space: pre-wrap; word-break: break-word; }
     .table th, .table td { text-align: center; }
+    .selected-time { background-color: #f0f0f0; }
   </style>
 </head>
 <body class="container py-4">
@@ -116,93 +117,64 @@
         times: doc.data().timeOptions || [],
       }));
 
-      // 只顯示有組別填寫過的時段
-      const availableTimes = new Set(groups.flatMap(group => group.times));
-
-      // 載入老師選的勾勾
-      const adminDoc = await db.collection("settings").doc("adminSelections").get();
-      const adminSelections = adminDoc.data()?.selections || {};
-
+      // 設置所有時間選項，包含每組可以選擇的時間
       const table = document.getElementById("timeMatrixTable");
       const theadRow = table.querySelector("thead tr");
       theadRow.innerHTML = "<th>組別</th>";
       allTimes.forEach((t, idx) => {
-        if (availableTimes.has(t)) {  // 只顯示有填寫的時段
-          const th = document.createElement("th");
-          th.textContent = t;
-          th.dataset.colIndex = idx;
-          theadRow.appendChild(th);
-        }
+        const th = document.createElement("th");
+        th.textContent = t;
+        th.dataset.colIndex = idx;
+        theadRow.appendChild(th);
       });
 
       const tbody = table.querySelector("tbody");
       tbody.innerHTML = "";
-      groups.forEach((g, rowIndex) => {
+      groups.forEach((g) => {
         const tr = document.createElement("tr");
         const nameTd = document.createElement("td");
         nameTd.textContent = g.name;
         tr.appendChild(nameTd);
 
-        allTimes.forEach((t, colIndex) => {
-          if (availableTimes.has(t)) {  // 只顯示有填寫的時段
-            const td = document.createElement("td");
-            const checkbox = document.createElement("input");
-            checkbox.type = "checkbox";
-            checkbox.dataset.group = g.name;
-            checkbox.dataset.time = t;
+        allTimes.forEach((t) => {
+          const td = document.createElement("td");
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.dataset.group = g.name;
+          checkbox.dataset.time = t;
 
-            // 根據老師選的資料來設定初始勾選
-            const groupSelectedTimes = adminSelections[g.name] || [];
-            if (groupSelectedTimes.includes(t)) checkbox.checked = true;
-
-            checkbox.addEventListener("change", async () => {
-              const group = checkbox.dataset.group;
-              const time = checkbox.dataset.time;
-
-              if (!adminSelections[group]) adminSelections[group] = [];
-
-              if (checkbox.checked) {
-                if (!adminSelections[group].includes(time)) {
-                  adminSelections[group].push(time);
-                }
-              } else {
-                adminSelections[group] = adminSelections[group].filter(t => t !== time);
-              }
-
-              await db.collection("settings").doc("adminSelections").set({
-                selections: adminSelections
-              });
-
-              highlightSelectedTimes(allTimes);
-            });
-
-            td.appendChild(checkbox);
-            tr.appendChild(td);
+          // 檢查該時間是否為該組別選擇過的時間
+          if (g.times.includes(t)) {
+            checkbox.disabled = false; // 可勾選
+          } else {
+            checkbox.disabled = true;  // 不能勾選，該時間沒有選過
           }
+
+          // 加入事件監聽器，當勾選框狀態改變時更新 Firebase
+          checkbox.addEventListener("change", async () => {
+            const group = checkbox.dataset.group;
+            const time = checkbox.dataset.time;
+
+            // 取得並更新資料庫中該組別的選擇狀態
+            const groupDoc = await db.collection("groups").doc(group).get();
+            const groupData = groupDoc.data();
+            let selectedTimes = groupData?.timeOptions || [];
+
+            if (checkbox.checked) {
+              if (!selectedTimes.includes(time)) selectedTimes.push(time);
+            } else {
+              selectedTimes = selectedTimes.filter(t => t !== time);
+            }
+
+            await db.collection("groups").doc(group).update({ timeOptions: selectedTimes });
+          });
+
+          td.appendChild(checkbox);
+          tr.appendChild(td);
         });
 
         tbody.appendChild(tr);
       });
-
-      highlightSelectedTimes(allTimes);
-    }
-
-    function highlightSelectedTimes(allTimes) {
-      const table = document.getElementById("timeMatrixTable");
-      const numCols = table.querySelector("thead tr").children.length - 1;
-
-      for (let col = 0; col < numCols; col++) {
-        let hasChecked = false;
-        const rows = table.querySelectorAll("tbody tr");
-        rows.forEach(row => {
-          const td = row.children[col + 1];
-          const checkbox = td.querySelector("input[type='checkbox']");
-          if (checkbox?.checked) hasChecked = true;
-        });
-
-        const th = table.querySelector("thead tr").children[col + 1];
-        th.style.backgroundColor = hasChecked ? "#f0f0f0" : "";
-      }
     }
 
     loadTimeOptions();
