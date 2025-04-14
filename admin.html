@@ -1,3 +1,4 @@
+<!-- 📄 admin.html - Firebase Auth + 管理功能完整登入修正 -->
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -5,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>導生聚餐 - 老師後台</title>
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
   <style>
@@ -16,33 +18,41 @@
   </style>
 </head>
 <body class="container py-4">
-  <h1 class="mb-4">導生聚餐 - 老師後台管理頁面</h1>
+  <div id="loginSection" class="text-center">
+    <h2 class="mb-3">請登入帳號</h2>
+    <input type="email" id="adminEmail" class="form-control mb-2 w-50 mx-auto" placeholder="Email" />
+    <input type="password" id="adminPassword" class="form-control mb-3 w-50 mx-auto" placeholder="密碼" />
+    <button class="btn btn-primary" onclick="loginWithFirebase()">登入</button>
+    <p id="loginError" class="text-danger mt-3"></p>
+  </div>
 
-  <section class="mb-4">
-    <h4>設定可選時間</h4>
-    <form id="timeForm" class="d-flex flex-wrap gap-2 mb-3">
-      <input type="text" id="newTime" class="form-control w-auto" placeholder="例如 4/18 19:00-21:00" />
-      <button type="submit" class="btn btn-primary">新增時間</button>
-    </form>
-    <div id="timeList" class="mb-4"></div>
-  </section>
+  <div id="adminPanel" style="display: none;">
+    <h1 class="mb-4">導生聚餐 - 老師後台管理頁面</h1>
 
-  <section class="mt-5">
-    <h4>時間總表（老師安排用）</h4>
-    <div class="table-responsive">
-      <table class="table table-bordered align-middle text-center" id="timeMatrixTable">
-        <thead>
-          <tr></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
+    <section class="mb-4">
+      <h4>設定可選時間</h4>
+      <form id="timeForm" class="d-flex flex-wrap gap-2 mb-3">
+        <input type="text" id="newTime" class="form-control w-auto" placeholder="例如 4/18 19:00-21:00" />
+        <button type="submit" class="btn btn-primary">新增時間</button>
+      </form>
+      <div id="timeList" class="mb-4"></div>
+    </section>
 
-  <section>
-    <h4>所有小組資料</h4>
-    <div id="groupContainer"></div>
-  </section>
+    <section class="mt-5">
+      <h4>時間總表（老師安排用）</h4>
+      <div class="table-responsive">
+        <table class="table table-bordered align-middle text-center" id="timeMatrixTable">
+          <thead><tr></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h4>所有小組資料</h4>
+      <div id="groupContainer"></div>
+    </section>
+  </div>
 
   <script>
     const firebaseConfig = {
@@ -52,6 +62,32 @@
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
+
+    async function loginWithFirebase() {
+      const email = document.getElementById("adminEmail").value.trim();
+      const password = document.getElementById("adminPassword").value.trim();
+      const err = document.getElementById("loginError");
+      try {
+        await firebase.auth().signInWithEmailAndPassword(email, password);
+        document.getElementById("loginSection").style.display = "none";
+        document.getElementById("adminPanel").style.display = "block";
+        loadTimeOptions();
+        loadGroups();
+        renderTimeMatrix();
+      } catch (e) {
+        err.innerText = "登入失敗：「" + e.message + "」";
+      }
+    }
+
+    firebase.auth().onAuthStateChanged(user => {
+      if (user) {
+        document.getElementById("loginSection").style.display = "none";
+        document.getElementById("adminPanel").style.display = "block";
+        loadTimeOptions();
+        loadGroups();
+        renderTimeMatrix();
+      }
+    });
 
     const timeForm = document.getElementById("timeForm");
     const newTime = document.getElementById("newTime");
@@ -78,18 +114,6 @@
       loadTimeOptions();
     }
 
-    timeForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const doc = await db.collection("settings").doc("timeOptions").get();
-      const options = (doc.data()?.options || []);
-      if (newTime.value.trim()) {
-        options.push(newTime.value.trim());
-        await db.collection("settings").doc("timeOptions").set({ options });
-        newTime.value = "";
-        loadTimeOptions();
-      }
-    });
-
     async function loadGroups() {
       const snap = await db.collection("groups").get();
       groupContainer.innerHTML = snap.docs.map(doc => {
@@ -111,7 +135,6 @@
     async function renderTimeMatrix() {
       const settingsDoc = await db.collection("settings").doc("timeOptions").get();
       const allTimes = settingsDoc.data()?.options || [];
-
       const groupSnap = await db.collection("groups").get();
       const groups = groupSnap.docs.map(doc => ({
         id: doc.id,
@@ -133,8 +156,6 @@
 
       const tbody = table.querySelector("tbody");
       tbody.innerHTML = "";
-
-      // 收集哪些時間欄已經被老師選取過
       const timeSelectionMap = {};
       allTimes.forEach(t => { timeSelectionMap[t] = false; });
 
@@ -146,7 +167,6 @@
 
         allTimes.forEach(t => {
           const td = document.createElement("td");
-
           if (g.times.includes(t)) {
             const checkbox = document.createElement("input");
             checkbox.type = "checkbox";
@@ -170,21 +190,18 @@
               }
 
               await groupRef.update({ selectedTimes: selected });
-              renderTimeMatrix(); // refresh UI
+              renderTimeMatrix();
             });
 
             td.appendChild(checkbox);
           } else {
-            td.innerHTML = ""; // 沒填就不出現勾勾格
+            td.innerHTML = "";
           }
-
           tr.appendChild(td);
         });
-
         tbody.appendChild(tr);
       });
 
-      // 依照 timeSelectionMap 標記整欄灰色
       allTimes.forEach((t, idx) => {
         const th = theadRow.children[idx + 1];
         const cells = [...tbody.querySelectorAll(`tr td:nth-child(${idx + 2})`)];
@@ -198,9 +215,18 @@
       });
     }
 
-    loadTimeOptions();
-    loadGroups();
-    renderTimeMatrix();
+    timeForm?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const doc = await db.collection("settings").doc("timeOptions").get();
+      const options = (doc.data()?.options || []);
+      if (newTime.value.trim()) {
+        options.push(newTime.value.trim());
+        await db.collection("settings").doc("timeOptions").set({ options });
+        newTime.value = "";
+        loadTimeOptions();
+        renderTimeMatrix();
+      }
+    });
   </script>
 </body>
 </html>
