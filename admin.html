@@ -1,4 +1,4 @@
-<!-- 📄 admin.html - Firebase Auth + 管理功能完整登入修正 -->
+<!-- 📄 admin.html - Firebase Auth + 時間排序修正 + 定義 loginWithFirebase -->
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -18,6 +18,7 @@
   </style>
 </head>
 <body class="container py-4">
+
   <div id="loginSection" class="text-center">
     <h2 class="mb-3">請登入帳號</h2>
     <input type="email" id="adminEmail" class="form-control mb-2 w-50 mx-auto" placeholder="Email" />
@@ -32,7 +33,7 @@
     <section class="mb-4">
       <h4>設定可選時間</h4>
       <form id="timeForm" class="d-flex flex-wrap gap-2 mb-3">
-        <input type="text" id="newTime" class="form-control w-auto" placeholder="例如 4/18 19:00-21:00" />
+        <input type="text" id="newTime" class="form-control w-auto" placeholder="例如 4/18(五) 19:00-21:00" />
         <button type="submit" class="btn btn-primary">新增時間</button>
       </form>
       <div id="timeList" class="mb-4"></div>
@@ -94,10 +95,28 @@
     const timeList = document.getElementById("timeList");
     const groupContainer = document.getElementById("groupContainer");
 
+    function sortTimeStrings(arr) {
+  return arr.sort((a, b) => {
+    const isDate = str => /^\d{1,2}\/\d{1,2}\(?.*?\)?/.test(str);
+    if (!isDate(a) && isDate(b)) return 1;
+    if (isDate(a) && !isDate(b)) return -1;
+    if (!isDate(a) && !isDate(b)) return a.localeCompare(b);
+
+    const parse = str => {
+      const match = str.match(/(\d{1,2})\/(\d{1,2})\([^)]*\)\s+(\d{1,2}):(\d{2})/);
+      if (!match) return Number.MAX_VALUE;
+      const [ , m, d, h, min ] = match.map(Number);
+      return new Date(2025, m - 1, d, h, min).getTime();
+    };
+
+    return parse(a) - parse(b);
+  });
+}
+
     async function loadTimeOptions() {
       const doc = await db.collection("settings").doc("timeOptions").get();
       const data = doc.data();
-      const times = (data?.options || []);
+      const times = sortTimeStrings(data?.options || []);
       timeList.innerHTML = times.map((t, i) =>
         `<div class='d-flex align-items-center mb-1'>
           <span class='me-2'>${t}</span>
@@ -134,7 +153,7 @@
 
     async function renderTimeMatrix() {
       const settingsDoc = await db.collection("settings").doc("timeOptions").get();
-      const allTimes = settingsDoc.data()?.options || [];
+      const allTimes = sortTimeStrings(settingsDoc.data()?.options || []);
       const groupSnap = await db.collection("groups").get();
       const groups = groupSnap.docs.map(doc => ({
         id: doc.id,
@@ -216,17 +235,25 @@
     }
 
     timeForm?.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const doc = await db.collection("settings").doc("timeOptions").get();
-      const options = (doc.data()?.options || []);
-      if (newTime.value.trim()) {
-        options.push(newTime.value.trim());
-        await db.collection("settings").doc("timeOptions").set({ options });
-        newTime.value = "";
-        loadTimeOptions();
-        renderTimeMatrix();
-      }
-    });
+  e.preventDefault();
+  const timeStr = newTime.value.trim();
+  if (!timeStr) return;
+
+  const docRef = db.collection("settings").doc("timeOptions");
+  const doc = await docRef.get();
+  const original = doc.data()?.options || [];
+
+  // 避免重複新增相同的時間
+  if (!original.includes(timeStr)) {
+    original.push(timeStr);
+    await docRef.set({ options: original });
+  }
+
+  newTime.value = "";
+  loadTimeOptions();
+  renderTimeMatrix();
+});
+
   </script>
 </body>
 </html>
