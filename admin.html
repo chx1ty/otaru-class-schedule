@@ -114,22 +114,31 @@
 }
 
     async function loadTimeOptions() {
-      const doc = await db.collection("settings").doc("timeOptions").get();
-      const data = doc.data();
-      const times = sortTimeStrings(data?.options || []);
-      timeList.innerHTML = times.map((t, i) =>
-        `<div class='d-flex align-items-center mb-1'>
-          <span class='me-2'>${t}</span>
+  const doc = await db.collection("settings").doc("timeOptions").get();
+  const data = doc.data();
+  const original = data?.options || [];
+  const sorted = sortTimeStrings([...original]);
+
+  timeList.innerHTML = sorted.map(t => `
+    <div class='d-flex align-items-center mb-1'>
+      <span class='me-2'>${t}</span>
+      <button class='btn btn-sm btn-outline-danger' onclick='removeTime("${t.replace(/"/g, '\"')}")'>刪除</button>
+    </div>`).join("");
+}</span>
           <button class='btn btn-sm btn-outline-danger' onclick='removeTime(${i})'>刪除</button>
         </div>`
       ).join("");
     }
 
-    async function removeTime(index) {
-      const doc = await db.collection("settings").doc("timeOptions").get();
-      const times = doc.data().options;
-      times.splice(index, 1);
-      await db.collection("settings").doc("timeOptions").set({ options: times });
+    async function removeTime(timeStr) {
+  const docRef = db.collection("settings").doc("timeOptions");
+  const doc = await docRef.get();
+  let options = doc.data()?.options || [];
+  options = options.filter(t => t !== timeStr);
+  await docRef.set({ options });
+  loadTimeOptions();
+  renderTimeMatrix();
+});
       loadTimeOptions();
     }
 
