@@ -1,4 +1,4 @@
-<!-- 📄 admin.html - Firebase Auth + 時間排序修正 + 定義 loginWithFirebase -->
+<!-- 📄 admin.html - 修正 loginWithFirebase 未定義錯誤 -->
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -18,12 +18,11 @@
   </style>
 </head>
 <body class="container py-4">
-
   <div id="loginSection" class="text-center">
     <h2 class="mb-3">請登入帳號</h2>
     <input type="email" id="adminEmail" class="form-control mb-2 w-50 mx-auto" placeholder="Email" />
     <input type="password" id="adminPassword" class="form-control mb-3 w-50 mx-auto" placeholder="密碼" />
-    <button class="btn btn-primary" onclick="loginWithFirebase()">登入</button>
+    <button class="btn btn-primary" id="loginButton">登入</button>
     <p id="loginError" class="text-danger mt-3"></p>
   </div>
 
@@ -64,21 +63,16 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    async function loginWithFirebase() {
+    document.getElementById("loginButton").addEventListener("click", async () => {
       const email = document.getElementById("adminEmail").value.trim();
       const password = document.getElementById("adminPassword").value.trim();
       const err = document.getElementById("loginError");
       try {
         await firebase.auth().signInWithEmailAndPassword(email, password);
-        document.getElementById("loginSection").style.display = "none";
-        document.getElementById("adminPanel").style.display = "block";
-        loadTimeOptions();
-        loadGroups();
-        renderTimeMatrix();
       } catch (e) {
         err.innerText = "登入失敗：「" + e.message + "」";
       }
-    }
+    });
 
     firebase.auth().onAuthStateChanged(user => {
       if (user) {
@@ -96,50 +90,41 @@
     const groupContainer = document.getElementById("groupContainer");
 
     function sortTimeStrings(arr) {
-  return arr.sort((a, b) => {
-    const isDate = str => /^\d{1,2}\/\d{1,2}\(?.*?\)?/.test(str);
-    if (!isDate(a) && isDate(b)) return 1;
-    if (isDate(a) && !isDate(b)) return -1;
-    if (!isDate(a) && !isDate(b)) return a.localeCompare(b);
-
-    const parse = str => {
-      const match = str.match(/(\d{1,2})\/(\d{1,2})\([^)]*\)\s+(\d{1,2}):(\d{2})/);
-      if (!match) return Number.MAX_VALUE;
-      const [ , m, d, h, min ] = match.map(Number);
-      return new Date(2025, m - 1, d, h, min).getTime();
-    };
-
-    return parse(a) - parse(b);
-  });
-}
+      return arr.sort((a, b) => {
+        const isDate = str => /^\d{1,2}\/\d{1,2}\(?.*?\)?/.test(str);
+        if (!isDate(a) && isDate(b)) return 1;
+        if (isDate(a) && !isDate(b)) return -1;
+        if (!isDate(a) && !isDate(b)) return a.localeCompare(b);
+        const parse = str => {
+          const match = str.match(/(\d{1,2})\/(\d{1,2})\([^)]*\)\s+(\d{1,2}):(\d{2})/);
+          if (!match) return Number.MAX_VALUE;
+          const [, m, d, h, min] = match.map(Number);
+          return new Date(2025, m - 1, d, h, min).getTime();
+        };
+        return parse(a) - parse(b);
+      });
+    }
 
     async function loadTimeOptions() {
-  const doc = await db.collection("settings").doc("timeOptions").get();
-  const data = doc.data();
-  const original = data?.options || [];
-  const sorted = sortTimeStrings([...original]);
-
-  timeList.innerHTML = sorted.map(t => `
-    <div class='d-flex align-items-center mb-1'>
-      <span class='me-2'>${t}</span>
-      <button class='btn btn-sm btn-outline-danger' onclick='removeTime("${t.replace(/"/g, '\"')}")'>刪除</button>
-    </div>`).join("");
-}</span>
-          <button class='btn btn-sm btn-outline-danger' onclick='removeTime(${i})'>刪除</button>
-        </div>`
-      ).join("");
+      const doc = await db.collection("settings").doc("timeOptions").get();
+      const data = doc.data();
+      const original = data?.options || [];
+      const sorted = sortTimeStrings([...original]);
+      timeList.innerHTML = sorted.map(t => `
+        <div class='d-flex align-items-center mb-1'>
+          <span class='me-2'>${t}</span>
+          <button class='btn btn-sm btn-outline-danger' onclick='removeTime("${t.replace(/"/g, '\\"')}")'>刪除</button>
+        </div>`).join("");
     }
 
     async function removeTime(timeStr) {
-  const docRef = db.collection("settings").doc("timeOptions");
-  const doc = await docRef.get();
-  let options = doc.data()?.options || [];
-  options = options.filter(t => t !== timeStr);
-  await docRef.set({ options });
-  loadTimeOptions();
-  renderTimeMatrix();
-});
+      const docRef = db.collection("settings").doc("timeOptions");
+      const doc = await docRef.get();
+      let options = doc.data()?.options || [];
+      options = options.filter(t => t !== timeStr);
+      await docRef.set({ options });
       loadTimeOptions();
+      renderTimeMatrix();
     }
 
     async function loadGroups() {
@@ -170,7 +155,6 @@
         times: doc.data().timeOptions || [],
         selected: doc.data().selectedTimes || []
       }));
-
       const table = document.getElementById("timeMatrixTable");
       const theadRow = table.querySelector("thead tr");
       theadRow.innerHTML = "<th>組別</th>";
@@ -181,18 +165,15 @@
         th.dataset.index = idx;
         theadRow.appendChild(th);
       });
-
       const tbody = table.querySelector("tbody");
       tbody.innerHTML = "";
       const timeSelectionMap = {};
       allTimes.forEach(t => { timeSelectionMap[t] = false; });
-
       groups.forEach(g => {
         const tr = document.createElement("tr");
         const nameTd = document.createElement("td");
         nameTd.textContent = g.name;
         tr.appendChild(nameTd);
-
         allTimes.forEach(t => {
           const td = document.createElement("td");
           if (g.times.includes(t)) {
@@ -201,26 +182,19 @@
             checkbox.checked = g.selected.includes(t);
             checkbox.dataset.groupId = g.id;
             checkbox.dataset.time = t;
-
-            if (checkbox.checked) {
-              timeSelectionMap[t] = true;
-            }
-
+            if (checkbox.checked) timeSelectionMap[t] = true;
             checkbox.addEventListener("change", async () => {
               const groupRef = db.collection("groups").doc(g.id);
               const groupDoc = await groupRef.get();
               let selected = groupDoc.data().selectedTimes || [];
-
               if (checkbox.checked) {
                 if (!selected.includes(t)) selected.push(t);
               } else {
                 selected = selected.filter(item => item !== t);
               }
-
               await groupRef.update({ selectedTimes: selected });
               renderTimeMatrix();
             });
-
             td.appendChild(checkbox);
           } else {
             td.innerHTML = "";
@@ -229,7 +203,6 @@
         });
         tbody.appendChild(tr);
       });
-
       allTimes.forEach((t, idx) => {
         const th = theadRow.children[idx + 1];
         const cells = [...tbody.querySelectorAll(`tr td:nth-child(${idx + 2})`)];
@@ -244,25 +217,20 @@
     }
 
     timeForm?.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const timeStr = newTime.value.trim();
-  if (!timeStr) return;
-
-  const docRef = db.collection("settings").doc("timeOptions");
-  const doc = await docRef.get();
-  const original = doc.data()?.options || [];
-
-  // 避免重複新增相同的時間
-  if (!original.includes(timeStr)) {
-    original.push(timeStr);
-    await docRef.set({ options: original });
-  }
-
-  newTime.value = "";
-  loadTimeOptions();
-  renderTimeMatrix();
-});
-
+      e.preventDefault();
+      const timeStr = newTime.value.trim();
+      if (!timeStr) return;
+      const docRef = db.collection("settings").doc("timeOptions");
+      const doc = await docRef.get();
+      const original = doc.data()?.options || [];
+      if (!original.includes(timeStr)) {
+        original.push(timeStr);
+        await docRef.set({ options: original });
+      }
+      newTime.value = "";
+      loadTimeOptions();
+      renderTimeMatrix();
+    });
   </script>
 </body>
 </html>
