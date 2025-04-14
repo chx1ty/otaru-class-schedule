@@ -91,17 +91,17 @@
     }
 
     async function loadAvailableTimes() {
-      const doc = await db.collection("settings").doc("timeOptions").get();
-      if (doc.exists) {
-        const options = doc.data().options || [];
-        timeOptionsDiv.innerHTML = options.map((opt, i) =>
-          `<div class="form-check">
-            <input class="form-check-input" type="checkbox" id="time${i}" value="${opt}" />
-            <label class="form-check-label" for="time${i}">${opt}</label>
-          </div>`
-        ).join("");
-      }
-    }
+  const settingDoc = await db.collection("settings").doc("timeOptions").get();
+  if (settingDoc.exists) {
+    const options = sortTimeStrings(settingDoc.data().options || []);
+    timeOptionsDiv.innerHTML = options.map((opt, i) =>
+      `<div class="form-check">
+        <input class="form-check-input" type="checkbox" id="time${i}" value="${opt}" />
+        <label class="form-check-label" for="time${i}">${opt}</label>
+      </div>`
+    ).join("");
+  }
+}
 
     async function loadGroupData() {
       const doc = await db.collection("groups").doc(groupId).get();
@@ -184,6 +184,23 @@ ${link}`;
     });
 
     loadAvailableTimes().then(loadGroupData);
+
+    function sortTimeStrings(arr) {
+  return arr.sort((a, b) => {
+    const isDate = str => /^\d{1,2}\/\d{1,2}\(?.*?\)?/.test(str);
+    if (!isDate(a) && isDate(b)) return 1;
+    if (isDate(a) && !isDate(b)) return -1;
+    if (!isDate(a) && !isDate(b)) return a.localeCompare(b);
+
+    const parse = str => {
+      const match = str.match(/(\d{1,2})\/(\d{1,2})\([^)]*\)\s+(\d{1,2}):(\d{2})/);
+      if (!match) return Number.MAX_VALUE;
+      const [, m, d, h, min] = match.map(Number);
+      return new Date(2025, m - 1, d, h, min).getTime();
+    };
+    return parse(a) - parse(b);
+  });
+}
   </script>
 </body>
 </html>
