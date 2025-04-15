@@ -219,7 +219,9 @@
       
       const members = [...document.querySelectorAll(".member")].map(i => i.value.trim()).filter(Boolean);
       const selectedRestaurants = [...document.querySelectorAll(".recommended-restaurant:checked")].map(i => i.value);
-      const customRestaurants = [...document.querySelectorAll("#customRestaurantList .custom-restaurant-tag span")].map(span => span.textContent);
+      const customRestaurants = Array.from(customRestaurantList.children)
+        .map(tag => tag.querySelector("span")?.textContent?.trim())
+        .filter(Boolean);
       const timeOptions = [...document.querySelectorAll("#timeOptions input:checked")].map(i => i.value);
       const email = leaderEmail.value.trim();
       const groupNameInput = groupName.value.trim();
@@ -230,7 +232,7 @@
         submitBtn.disabled = false;
         return;
       }
-      
+
       // 檢查是否至少選擇或填寫一個餐廳
       if (selectedRestaurants.length === 0 && customRestaurants.length === 0) {
         alert("請至少勾選一個推薦餐廳或自行填寫一個餐廳建議！");
