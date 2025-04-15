@@ -1,0 +1,122 @@
+<!-- 📄 admin.html - Firebase 初始化修正 + 餐廳設定功能 -->
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>導生聚餐 - 老師後台</title>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    .group-card { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    .group-card h5 { margin-bottom: 0.5rem; }
+    pre { white-space: pre-wrap; word-break: break-word; }
+    .table th, .table td { text-align: center; vertical-align: middle; }
+    .time-selected-col { background-color: #f0f0f0 !important; }
+  </style>
+</head>
+<body class="container py-4">
+  <div id="loginSection" class="text-center">
+    <h2 class="mb-3">請登入帳號</h2>
+    <input type="email" id="adminEmail" class="form-control mb-2 w-50 mx-auto" placeholder="Email" />
+    <input type="password" id="adminPassword" class="form-control mb-3 w-50 mx-auto" placeholder="密碼" />
+    <button class="btn btn-primary" id="loginButton">登入</button>
+    <p id="loginError" class="text-danger mt-3"></p>
+  </div>
+
+  <div id="adminPanel" style="display: none;">
+    <h1 class="mb-4">導生聚餐 - 老師後台管理頁面</h1>
+
+    <section class="mb-4">
+      <h4>設定可選時間</h4>
+      <form id="timeForm" class="d-flex flex-wrap gap-2 mb-3">
+        <input type="text" id="newTime" class="form-control w-auto" placeholder="例如 4/18(五) 19:00-21:00" />
+        <button type="submit" class="btn btn-primary">新增時間</button>
+      </form>
+      <div id="timeList" class="mb-4"></div>
+    </section>
+
+    <section class="mb-4">
+      <h4>設定餐廳選項</h4>
+      <form id="restaurantForm" class="d-flex flex-wrap gap-2 mb-3">
+        <input type="text" id="newRestaurant" class="form-control w-auto" placeholder="例如 鍋媽媽火鍋" />
+        <button type="submit" class="btn btn-primary">新增餐廳</button>
+      </form>
+      <div id="restaurantList"></div>
+    </section>
+
+    <section class="mt-5">
+      <h4>所有小組資料</h4>
+      <div id="groupContainer"></div>
+    </section>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyA_rWFX4gj_no08Q9-iA2iVsmgULfrCu5I",
+      authDomain: "otaru-class-schedule.firebaseapp.com",
+      projectId: "otaru-class-schedule"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    document.getElementById("loginButton").addEventListener("click", async () => {
+      const email = document.getElementById("adminEmail").value.trim();
+      const password = document.getElementById("adminPassword").value.trim();
+      const err = document.getElementById("loginError");
+      try {
+        await firebase.auth().signInWithEmailAndPassword(email, password);
+      } catch (e) {
+        err.innerText = "登入失敗：「" + e.message + "」";
+      }
+    });
+
+    firebase.auth().onAuthStateChanged(user => {
+      if (user) {
+        document.getElementById("loginSection").style.display = "none";
+        document.getElementById("adminPanel").style.display = "block";
+        loadRestaurants();
+      }
+    });
+
+    const restaurantForm = document.getElementById("restaurantForm");
+    const newRestaurant = document.getElementById("newRestaurant");
+    const restaurantList = document.getElementById("restaurantList");
+
+    async function loadRestaurants() {
+      const doc = await db.collection("settings").doc("restaurantOptions").get();
+      const data = doc.data();
+      const options = data?.options || [];
+      restaurantList.innerHTML = options.map((r, i) =>
+        `<div class='d-flex align-items-center mb-1'>
+          <span class='me-2'>${r}</span>
+          <button class='btn btn-sm btn-outline-danger' onclick='removeRestaurant(${i})'>刪除</button>
+        </div>`
+      ).join("");
+    }
+
+    async function removeRestaurant(index) {
+      const doc = await db.collection("settings").doc("restaurantOptions").get();
+      const options = doc.data()?.options || [];
+      options.splice(index, 1);
+      await db.collection("settings").doc("restaurantOptions").set({ options });
+      loadRestaurants();
+    }
+
+    restaurantForm?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const doc = await db.collection("settings").doc("restaurantOptions").get();
+      const options = (doc.data()?.options || []);
+      const value = newRestaurant.value.trim();
+      if (value && !options.includes(value)) {
+        options.push(value);
+        await db.collection("settings").doc("restaurantOptions").set({ options });
+        newRestaurant.value = "";
+        loadRestaurants();
+      }
+    });
+  </script>
+</body>
+</html>
