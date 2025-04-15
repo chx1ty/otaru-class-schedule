@@ -1,4 +1,3 @@
-<!-- 📄 admin.html - Firebase 初始化修正 + 餐廳設定功能 -->
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -15,6 +14,7 @@
     pre { white-space: pre-wrap; word-break: break-word; }
     .table th, .table td { text-align: center; vertical-align: middle; }
     .time-selected-col { background-color: #f0f0f0 !important; }
+    .settings-section { margin-bottom: 2rem; }
   </style>
 </head>
 <body class="container py-4">
@@ -29,7 +29,7 @@
   <div id="adminPanel" style="display: none;">
     <h1 class="mb-4">導生聚餐 - 老師後台管理頁面</h1>
 
-    <section class="mb-4">
+    <section class="settings-section">
       <h4>設定可選時間</h4>
       <form id="timeForm" class="d-flex flex-wrap gap-2 mb-3">
         <input type="text" id="newTime" class="form-control w-auto" placeholder="例如 4/18(五) 19:00-21:00" />
@@ -38,16 +38,26 @@
       <div id="timeList" class="mb-4"></div>
     </section>
 
-    <section class="mb-4">
-      <h4>設定餐廳選項</h4>
+    <section class="settings-section">
+      <h4>設定推薦餐廳</h4>
       <form id="restaurantForm" class="d-flex flex-wrap gap-2 mb-3">
-        <input type="text" id="newRestaurant" class="form-control w-auto" placeholder="例如 鍋媽媽火鍋" />
+        <input type="text" id="newRestaurant" class="form-control w-auto" placeholder="輸入推薦餐廳名稱" />
         <button type="submit" class="btn btn-primary">新增餐廳</button>
       </form>
-      <div id="restaurantList"></div>
+      <div id="restaurantList" class="mb-4"></div>
     </section>
 
     <section class="mt-5">
+      <h4>時間總表（老師安排用）</h4>
+      <div class="table-responsive">
+        <table class="table table-bordered align-middle text-center" id="timeMatrixTable">
+          <thead><tr></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
       <h4>所有小組資料</h4>
       <div id="groupContainer"></div>
     </section>
@@ -57,7 +67,7 @@
     const firebaseConfig = {
       apiKey: "AIzaSyA_rWFX4gj_no08Q9-iA2iVsmgULfrCu5I",
       authDomain: "otaru-class-schedule.firebaseapp.com",
-      projectId: "otaru-class-schedule"
+      projectId: "otaru-class-schedule",
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
@@ -77,45 +87,208 @@
       if (user) {
         document.getElementById("loginSection").style.display = "none";
         document.getElementById("adminPanel").style.display = "block";
-        loadRestaurants();
+        loadTimeOptions();
+        loadRestaurantOptions();
+        loadGroups();
+        renderTimeMatrix();
       }
     });
 
+    const timeForm = document.getElementById("timeForm");
+    const newTime = document.getElementById("newTime");
+    const timeList = document.getElementById("timeList");
     const restaurantForm = document.getElementById("restaurantForm");
     const newRestaurant = document.getElementById("newRestaurant");
     const restaurantList = document.getElementById("restaurantList");
+    const groupContainer = document.getElementById("groupContainer");
 
-    async function loadRestaurants() {
+    function sortTimeStrings(arr) {
+      return arr.sort((a, b) => {
+        const isDate = str => /^\d{1,2}\/\d{1,2}\(?.*?\)?/.test(str);
+        if (!isDate(a) && isDate(b)) return 1;
+        if (isDate(a) && !isDate(b)) return -1;
+        if (!isDate(a) && !isDate(b)) return a.localeCompare(b);
+        const parse = str => {
+          const match = str.match(/(\d{1,2})\/(\d{1,2})\([^)]*\)\s+(\d{1,2}):(\d{2})/);
+          if (!match) return Number.MAX_VALUE;
+          const [, m, d, h, min] = match.map(Number);
+          return new Date(2025, m - 1, d, h, min).getTime();
+        };
+        return parse(a) - parse(b);
+      });
+    }
+
+    async function loadTimeOptions() {
+      const doc = await db.collection("settings").doc("timeOptions").get();
+      const data = doc.data();
+      const original = data?.options || [];
+      const sorted = sortTimeStrings([...original]);
+      timeList.innerHTML = sorted.map(t => `
+        <div class='d-flex align-items-center mb-1'>
+          <span class='me-2'>${t}</span>
+          <button class='btn btn-sm btn-outline-danger' onclick='removeTime("${t.replace(/"/g, '\\"')}")'>刪除</button>
+        </div>`).join("");
+    }
+
+    async function loadRestaurantOptions() {
       const doc = await db.collection("settings").doc("restaurantOptions").get();
       const data = doc.data();
-      const options = data?.options || [];
-      restaurantList.innerHTML = options.map((r, i) =>
-        `<div class='d-flex align-items-center mb-1'>
+      const restaurants = data?.options || [];
+      restaurantList.innerHTML = restaurants.map(r => `
+        <div class='d-flex align-items-center mb-1'>
           <span class='me-2'>${r}</span>
-          <button class='btn btn-sm btn-outline-danger' onclick='removeRestaurant(${i})'>刪除</button>
-        </div>`
-      ).join("");
+          <button class='btn btn-sm btn-outline-danger' onclick='removeRestaurant("${r.replace(/"/g, '\\"')}")'>刪除</button>
+        </div>`).join("");
     }
 
-    async function removeRestaurant(index) {
-      const doc = await db.collection("settings").doc("restaurantOptions").get();
-      const options = doc.data()?.options || [];
-      options.splice(index, 1);
-      await db.collection("settings").doc("restaurantOptions").set({ options });
-      loadRestaurants();
+    async function removeTime(timeStr) {
+      const docRef = db.collection("settings").doc("timeOptions");
+      const doc = await docRef.get();
+      let options = doc.data()?.options || [];
+      options = options.filter(t => t !== timeStr);
+      await docRef.set({ options });
+      loadTimeOptions();
+      renderTimeMatrix();
     }
+
+    async function removeRestaurant(restaurantStr) {
+      const docRef = db.collection("settings").doc("restaurantOptions");
+      const doc = await docRef.get();
+      let options = doc.data()?.options || [];
+      options = options.filter(r => r !== restaurantStr);
+      await docRef.set({ options });
+      loadRestaurantOptions();
+    }
+
+    async function loadGroups() {
+      const snap = await db.collection("groups").get();
+      groupContainer.innerHTML = snap.docs.map(doc => {
+        const d = doc.data();
+        return `
+          <div class="group-card">
+            <h5>${d.groupName}</h5>
+            <p><strong>組長 Email：</strong>${d.leaderEmail || "-"}</p>
+            <p><strong>組員：</strong>${(d.members || []).join(", ")}</p>
+            <p><strong>時間：</strong>${(d.timeOptions || []).join(", ")}</p>
+            <p><strong>餐廳：</strong>${formatRestaurants(d.selectedRestaurants || [], d.customRestaurants || [])}</p>
+            <p><strong>備註：</strong>${d.note || ""}</p>
+            <p><a href="submit.html?group=${doc.id}" target="_blank">✏️ 前往編輯</a></p>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function formatRestaurants(selected, custom) {
+      const items = [];
+      if (selected && selected.length) {
+        items.push(...selected);
+      }
+      if (custom && custom.length) {
+        items.push(...custom);
+      }
+      return items.join(", ") || "-";
+    }
+
+    async function renderTimeMatrix() {
+      const settingsDoc = await db.collection("settings").doc("timeOptions").get();
+      const allTimes = sortTimeStrings(settingsDoc.data()?.options || []);
+      const groupSnap = await db.collection("groups").get();
+      const groups = groupSnap.docs.map(doc => ({
+        id: doc.id,
+        name: doc.data().groupName,
+        times: doc.data().timeOptions || [],
+        selected: doc.data().selectedTimes || []
+      }));
+      const table = document.getElementById("timeMatrixTable");
+      const theadRow = table.querySelector("thead tr");
+      theadRow.innerHTML = "<th>組別</th>";
+      allTimes.forEach((t, idx) => {
+        const th = document.createElement("th");
+        th.textContent = t;
+        th.dataset.time = t;
+        th.dataset.index = idx;
+        theadRow.appendChild(th);
+      });
+      const tbody = table.querySelector("tbody");
+      tbody.innerHTML = "";
+      const timeSelectionMap = {};
+      allTimes.forEach(t => { timeSelectionMap[t] = false; });
+      groups.forEach(g => {
+        const tr = document.createElement("tr");
+        const nameTd = document.createElement("td");
+        nameTd.textContent = g.name;
+        tr.appendChild(nameTd);
+        allTimes.forEach(t => {
+          const td = document.createElement("td");
+          if (g.times.includes(t)) {
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.checked = g.selected.includes(t);
+            checkbox.dataset.groupId = g.id;
+            checkbox.dataset.time = t;
+            if (checkbox.checked) timeSelectionMap[t] = true;
+            checkbox.addEventListener("change", async () => {
+              const groupRef = db.collection("groups").doc(g.id);
+              const groupDoc = await groupRef.get();
+              let selected = groupDoc.data().selectedTimes || [];
+              if (checkbox.checked) {
+                if (!selected.includes(t)) selected.push(t);
+              } else {
+                selected = selected.filter(item => item !== t);
+              }
+              await groupRef.update({ selectedTimes: selected });
+              renderTimeMatrix();
+            });
+            td.appendChild(checkbox);
+          } else {
+            td.innerHTML = "";
+          }
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      allTimes.forEach((t, idx) => {
+        const th = theadRow.children[idx + 1];
+        const cells = [...tbody.querySelectorAll(`tr td:nth-child(${idx + 2})`)];
+        if (timeSelectionMap[t]) {
+          th.classList.add("time-selected-col");
+          cells.forEach(cell => cell.classList.add("time-selected-col"));
+        } else {
+          th.classList.remove("time-selected-col");
+          cells.forEach(cell => cell.classList.remove("time-selected-col"));
+        }
+      });
+    }
+
+    timeForm?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const timeStr = newTime.value.trim();
+      if (!timeStr) return;
+      const docRef = db.collection("settings").doc("timeOptions");
+      const doc = await docRef.get();
+      const original = doc.data()?.options || [];
+      if (!original.includes(timeStr)) {
+        original.push(timeStr);
+        await docRef.set({ options: original });
+      }
+      newTime.value = "";
+      loadTimeOptions();
+      renderTimeMatrix();
+    });
 
     restaurantForm?.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const doc = await db.collection("settings").doc("restaurantOptions").get();
-      const options = (doc.data()?.options || []);
-      const value = newRestaurant.value.trim();
-      if (value && !options.includes(value)) {
-        options.push(value);
-        await db.collection("settings").doc("restaurantOptions").set({ options });
-        newRestaurant.value = "";
-        loadRestaurants();
+      const restaurantStr = newRestaurant.value.trim();
+      if (!restaurantStr) return;
+      const docRef = db.collection("settings").doc("restaurantOptions");
+      const doc = await docRef.get();
+      const original = doc.data()?.options || [];
+      if (!original.includes(restaurantStr)) {
+        original.push(restaurantStr);
+        await docRef.set({ options: original });
       }
+      newRestaurant.value = "";
+      loadRestaurantOptions();
     });
   </script>
 </body>
