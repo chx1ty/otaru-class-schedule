@@ -1,4 +1,3 @@
-<!-- 📄 submit.html - 加入備註欄位（選填） -->
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -13,6 +12,9 @@
     .member-input, .restaurant-input { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
     #statusMsg.success { color: green; font-weight: bold; animation: fadeIn 0.5s ease-in; white-space: pre-line; }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .restaurant-checkbox { margin-bottom: 0.5rem; }
+    .custom-restaurant-tag { display: inline-flex; align-items: center; background-color: #f0f0f0; padding: 0.3rem 0.6rem; border-radius: 4px; margin-right: 0.5rem; margin-bottom: 0.5rem; }
+    .custom-restaurant-tag button { border: none; background: none; font-size: 0.8rem; margin-left: 0.5rem; cursor: pointer; }
   </style>
 </head>
 <body class="container py-4">
@@ -35,11 +37,26 @@
       <label class="form-label">可行時間</label>
       <div id="timeOptions"></div>
     </div>
+    
     <div class="mb-3">
-      <label class="form-label">餐廳建議</label>
-      <div id="restaurantList"></div>
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addRestaurantField()">+ 新增餐廳</button>
+      <label class="form-label">要吃什麼 <small class="text-muted">(請至少勾選一個餐廳或自行填寫)</small></label>
+      
+      <!-- 推薦餐廳選項 -->
+      <div class="mb-3">
+        <div id="recommendedRestaurants" class="mb-2"></div>
+      </div>
+      
+      <!-- 自訂餐廳輸入 -->
+      <div class="mb-3">
+        <label class="form-label">如果你有想到要吃什麼可以自己填↓↓↓</label>
+        <div class="input-group mb-2">
+          <input type="text" class="form-control" id="customRestaurant" placeholder="輸入您建議的餐廳，輸入後記得按「新增」!">
+          <button class="btn btn-outline-primary" type="button" id="addCustomRestaurant">新增</button>
+        </div>
+        <div id="customRestaurantList"></div>
+      </div>
     </div>
+    
     <div class="mb-3">
       <label class="form-label">備註（選填）</label>
       <textarea class="form-control" id="note" rows="3" placeholder="例如：想跟小樽說的話！、特殊需求、有空的其他時段等"></textarea>
@@ -67,8 +84,10 @@
     const groupName = document.getElementById("groupName");
     const leaderEmail = document.getElementById("leaderEmail");
     const memberList = document.getElementById("memberList");
-    const restaurantList = document.getElementById("restaurantList");
     const timeOptionsDiv = document.getElementById("timeOptions");
+    const recommendedRestaurantsDiv = document.getElementById("recommendedRestaurants");
+    const customRestaurantInput = document.getElementById("customRestaurant");
+    const customRestaurantList = document.getElementById("customRestaurantList");
     const noteInput = document.getElementById("note");
     const statusMsg = document.getElementById("statusMsg");
     const deleteBtn = document.getElementById("deleteBtn");
@@ -82,26 +101,61 @@
       memberList.appendChild(div);
     }
 
-    function addRestaurantField(value = "") {
-      const div = document.createElement("div");
-      div.className = "restaurant-input";
-      div.innerHTML = `<input type="text" class="form-control restaurant" value="${value}" placeholder="建議餐廳" required />
-                       <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.parentElement.remove()">刪除</button>`;
-      restaurantList.appendChild(div);
+    function addCustomRestaurantTag(value = "") {
+      if (!value.trim()) return;
+      
+      // 檢查是否重複
+      const existingTags = [...customRestaurantList.querySelectorAll(".custom-restaurant-tag span")];
+      if (existingTags.some(tag => tag.textContent === value.trim())) return;
+      
+      const tag = document.createElement("div");
+      tag.className = "custom-restaurant-tag";
+      tag.innerHTML = `<span>${value.trim()}</span><button type="button">&times;</button>`;
+      tag.querySelector("button").addEventListener("click", () => tag.remove());
+      customRestaurantList.appendChild(tag);
+      customRestaurantInput.value = "";
     }
 
+    document.getElementById("addCustomRestaurant").addEventListener("click", () => {
+      addCustomRestaurantTag(customRestaurantInput.value);
+    });
+
+    customRestaurantInput.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        addCustomRestaurantTag(customRestaurantInput.value);
+      }
+    });
+
     async function loadAvailableTimes() {
-  const settingDoc = await db.collection("settings").doc("timeOptions").get();
-  if (settingDoc.exists) {
-    const options = sortTimeStrings(settingDoc.data().options || []);
-    timeOptionsDiv.innerHTML = options.map((opt, i) =>
-      `<div class="form-check">
-        <input class="form-check-input" type="checkbox" id="time${i}" value="${opt}" />
-        <label class="form-check-label" for="time${i}">${opt}</label>
-      </div>`
-    ).join("");
-  }
-}
+      const settingDoc = await db.collection("settings").doc("timeOptions").get();
+      if (settingDoc.exists) {
+        const options = sortTimeStrings(settingDoc.data().options || []);
+        timeOptionsDiv.innerHTML = options.map((opt, i) =>
+          `<div class="form-check">
+            <input class="form-check-input" type="checkbox" id="time${i}" value="${opt}" />
+            <label class="form-check-label" for="time${i}">${opt}</label>
+          </div>`
+        ).join("");
+      }
+    }
+
+    async function loadRecommendedRestaurants() {
+      const settingDoc = await db.collection("settings").doc("restaurantOptions").get();
+      if (settingDoc.exists) {
+        const options = settingDoc.data().options || [];
+        if (options.length > 0) {
+          recommendedRestaurantsDiv.innerHTML = options.map((opt, i) =>
+            `<div class="form-check restaurant-checkbox">
+              <input class="form-check-input recommended-restaurant" type="checkbox" id="restaurant${i}" value="${opt}" />
+              <label class="form-check-label" for="restaurant${i}">${opt}</label>
+            </div>`
+          ).join("");
+        } else {
+          recommendedRestaurantsDiv.innerHTML = "<p class='text-muted'>目前老師沒有設定推薦餐廳</p>";
+        }
+      }
+    }
 
     async function loadGroupData() {
       const doc = await db.collection("groups").doc(groupId).get();
@@ -109,18 +163,46 @@
         const data = doc.data();
         groupName.value = data.groupName;
         leaderEmail.value = data.leaderEmail || "";
+        
+        // 載入組員
         (data.members || []).forEach(addMemberField);
-        (data.restaurants || []).forEach(addRestaurantField);
+        
+        // 載入時間選項
         const timeInputs = document.querySelectorAll("#timeOptions input");
         (data.timeOptions || []).forEach(t => {
           const match = [...timeInputs].find(i => i.value === t);
           if (match) match.checked = true;
         });
+        
+        // 載入推薦餐廳選項
+        const selectedRestaurants = data.selectedRestaurants || [];
+        document.querySelectorAll(".recommended-restaurant").forEach(input => {
+          if (selectedRestaurants.includes(input.value)) {
+            input.checked = true;
+          }
+        });
+        
+        // 載入自訂餐廳
+        const customRestaurants = data.customRestaurants || [];
+        customRestaurants.forEach(restaurant => addCustomRestaurantTag(restaurant));
+        
+        // 兼容舊版數據：如果有舊的 restaurants 數據但沒有 selectedRestaurants 或 customRestaurants
+        if (data.restaurants && data.restaurants.length > 0 && !data.selectedRestaurants && !data.customRestaurants) {
+          data.restaurants.forEach(r => {
+            // 檢查是否為推薦餐廳
+            const recommendedInput = [...document.querySelectorAll(".recommended-restaurant")].find(input => input.value === r);
+            if (recommendedInput) {
+              recommendedInput.checked = true;
+            } else {
+              addCustomRestaurantTag(r);
+            }
+          });
+        }
+        
         noteInput.value = data.note || "";
         deleteBtn.classList.remove("d-none");
       } else {
         addMemberField();
-        addRestaurantField();
       }
     }
 
@@ -134,14 +216,26 @@
     groupForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       submitBtn.disabled = true;
+      
       const members = [...document.querySelectorAll(".member")].map(i => i.value.trim()).filter(Boolean);
-      const restaurants = [...document.querySelectorAll(".restaurant")].map(i => i.value.trim()).filter(Boolean);
-      const timeOptions = [...document.querySelectorAll("#timeOptions input")].filter(i => i.checked).map(i => i.value);
+      const selectedRestaurants = [...document.querySelectorAll(".recommended-restaurant:checked")].map(i => i.value);
+      const customRestaurants = Array.from(customRestaurantList.children)
+        .map(tag => tag.querySelector("span")?.textContent?.trim())
+        .filter(Boolean);
+      const timeOptions = [...document.querySelectorAll("#timeOptions input:checked")].map(i => i.value);
       const email = leaderEmail.value.trim();
       const groupNameInput = groupName.value.trim();
 
-      if (members.length === 0 || restaurants.length === 0 || timeOptions.length === 0) {
-        alert("請填寫至少一位組員、建議一間餐廳，並選擇一個可行時間！");
+      // 檢查必填欄位
+      if (members.length === 0 || timeOptions.length === 0) {
+        alert("請填寫至少一位組員，並選擇一個可行時間！");
+        submitBtn.disabled = false;
+        return;
+      }
+
+      // 檢查是否至少選擇或填寫一個餐廳
+      if (selectedRestaurants.length === 0 && customRestaurants.length === 0) {
+        alert("請至少勾選一個推薦餐廳或自行填寫一個餐廳建議！");
         submitBtn.disabled = false;
         return;
       }
@@ -158,9 +252,11 @@
         groupName: groupNameInput,
         leaderEmail: email,
         members,
-        restaurants,
+        selectedRestaurants,  // 新增：推薦餐廳選項
+        customRestaurants,    // 新增：自訂餐廳
+        restaurants: [...selectedRestaurants, ...customRestaurants], // 向後兼容
         timeOptions,
-        note: noteInput.value.trim(), // 加入備註
+        note: noteInput.value.trim(),
       };
 
       await db.collection("groups").doc(groupId).set(data);
@@ -181,26 +277,34 @@ ${link}`;
 ⚠️ 寄信失敗：${err.text || err}`;
         console.error("EmailJS error:", err);
       });
+      
+      submitBtn.disabled = false;
     });
 
-    loadAvailableTimes().then(loadGroupData);
+    async function initForm() {
+      await Promise.all([loadAvailableTimes(), loadRecommendedRestaurants()]);
+      await loadGroupData();
+    }
 
     function sortTimeStrings(arr) {
-  return arr.sort((a, b) => {
-    const isDate = str => /^\d{1,2}\/\d{1,2}\(?.*?\)?/.test(str);
-    if (!isDate(a) && isDate(b)) return 1;
-    if (isDate(a) && !isDate(b)) return -1;
-    if (!isDate(a) && !isDate(b)) return a.localeCompare(b);
+      return arr.sort((a, b) => {
+        const isDate = str => /^\d{1,2}\/\d{1,2}\(?.*?\)?/.test(str);
+        if (!isDate(a) && isDate(b)) return 1;
+        if (isDate(a) && !isDate(b)) return -1;
+        if (!isDate(a) && !isDate(b)) return a.localeCompare(b);
 
-    const parse = str => {
-      const match = str.match(/(\d{1,2})\/(\d{1,2})\([^)]*\)\s+(\d{1,2}):(\d{2})/);
-      if (!match) return Number.MAX_VALUE;
-      const [, m, d, h, min] = match.map(Number);
-      return new Date(2025, m - 1, d, h, min).getTime();
-    };
-    return parse(a) - parse(b);
-  });
-}
+        const parse = str => {
+          const match = str.match(/(\d{1,2})\/(\d{1,2})\([^)]*\)\s+(\d{1,2}):(\d{2})/);
+          if (!match) return Number.MAX_VALUE;
+          const [, m, d, h, min] = match.map(Number);
+          return new Date(2025, m - 1, d, h, min).getTime();
+        };
+        return parse(a) - parse(b);
+      });
+    }
+    
+    // 初始化表單
+    initForm();
   </script>
 </body>
 </html>
