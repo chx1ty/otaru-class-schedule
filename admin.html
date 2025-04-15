@@ -1,4 +1,3 @@
-<!-- 📄 admin.html - 修正 loginWithFirebase 未定義錯誤 -->
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -15,6 +14,7 @@
     pre { white-space: pre-wrap; word-break: break-word; }
     .table th, .table td { text-align: center; vertical-align: middle; }
     .time-selected-col { background-color: #f0f0f0 !important; }
+    .settings-section { margin-bottom: 2rem; }
   </style>
 </head>
 <body class="container py-4">
@@ -29,13 +29,22 @@
   <div id="adminPanel" style="display: none;">
     <h1 class="mb-4">導生聚餐 - 老師後台管理頁面</h1>
 
-    <section class="mb-4">
+    <section class="settings-section">
       <h4>設定可選時間</h4>
       <form id="timeForm" class="d-flex flex-wrap gap-2 mb-3">
         <input type="text" id="newTime" class="form-control w-auto" placeholder="例如 4/18(五) 19:00-21:00" />
         <button type="submit" class="btn btn-primary">新增時間</button>
       </form>
       <div id="timeList" class="mb-4"></div>
+    </section>
+
+    <section class="settings-section">
+      <h4>設定推薦餐廳</h4>
+      <form id="restaurantForm" class="d-flex flex-wrap gap-2 mb-3">
+        <input type="text" id="newRestaurant" class="form-control w-auto" placeholder="輸入推薦餐廳名稱" />
+        <button type="submit" class="btn btn-primary">新增餐廳</button>
+      </form>
+      <div id="restaurantList" class="mb-4"></div>
     </section>
 
     <section class="mt-5">
@@ -79,6 +88,7 @@
         document.getElementById("loginSection").style.display = "none";
         document.getElementById("adminPanel").style.display = "block";
         loadTimeOptions();
+        loadRestaurantOptions();
         loadGroups();
         renderTimeMatrix();
       }
@@ -87,6 +97,9 @@
     const timeForm = document.getElementById("timeForm");
     const newTime = document.getElementById("newTime");
     const timeList = document.getElementById("timeList");
+    const restaurantForm = document.getElementById("restaurantForm");
+    const newRestaurant = document.getElementById("newRestaurant");
+    const restaurantList = document.getElementById("restaurantList");
     const groupContainer = document.getElementById("groupContainer");
 
     function sortTimeStrings(arr) {
@@ -117,6 +130,17 @@
         </div>`).join("");
     }
 
+    async function loadRestaurantOptions() {
+      const doc = await db.collection("settings").doc("restaurantOptions").get();
+      const data = doc.data();
+      const restaurants = data?.options || [];
+      restaurantList.innerHTML = restaurants.map(r => `
+        <div class='d-flex align-items-center mb-1'>
+          <span class='me-2'>${r}</span>
+          <button class='btn btn-sm btn-outline-danger' onclick='removeRestaurant("${r.replace(/"/g, '\\"')}")'>刪除</button>
+        </div>`).join("");
+    }
+
     async function removeTime(timeStr) {
       const docRef = db.collection("settings").doc("timeOptions");
       const doc = await docRef.get();
@@ -125,6 +149,15 @@
       await docRef.set({ options });
       loadTimeOptions();
       renderTimeMatrix();
+    }
+
+    async function removeRestaurant(restaurantStr) {
+      const docRef = db.collection("settings").doc("restaurantOptions");
+      const doc = await docRef.get();
+      let options = doc.data()?.options || [];
+      options = options.filter(r => r !== restaurantStr);
+      await docRef.set({ options });
+      loadRestaurantOptions();
     }
 
     async function loadGroups() {
@@ -137,12 +170,23 @@
             <p><strong>組長 Email：</strong>${d.leaderEmail || "-"}</p>
             <p><strong>組員：</strong>${(d.members || []).join(", ")}</p>
             <p><strong>時間：</strong>${(d.timeOptions || []).join(", ")}</p>
-            <p><strong>餐廳建議：</strong>${(d.restaurants || []).join(", ")}</p>
+            <p><strong>餐廳：</strong>${formatRestaurants(d.selectedRestaurants || [], d.customRestaurants || [])}</p>
             <p><strong>備註：</strong>${d.note || ""}</p>
             <p><a href="submit.html?group=${doc.id}" target="_blank">✏️ 前往編輯</a></p>
           </div>
         `;
       }).join("");
+    }
+
+    function formatRestaurants(selected, custom) {
+      const items = [];
+      if (selected && selected.length) {
+        items.push(...selected);
+      }
+      if (custom && custom.length) {
+        items.push(...custom);
+      }
+      return items.join(", ") || "-";
     }
 
     async function renderTimeMatrix() {
@@ -230,6 +274,21 @@
       newTime.value = "";
       loadTimeOptions();
       renderTimeMatrix();
+    });
+
+    restaurantForm?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const restaurantStr = newRestaurant.value.trim();
+      if (!restaurantStr) return;
+      const docRef = db.collection("settings").doc("restaurantOptions");
+      const doc = await docRef.get();
+      const original = doc.data()?.options || [];
+      if (!original.includes(restaurantStr)) {
+        original.push(restaurantStr);
+        await docRef.set({ options: original });
+      }
+      newRestaurant.value = "";
+      loadRestaurantOptions();
     });
   </script>
 </body>
