@@ -42,7 +42,7 @@
         <strong>老師已確認時間：</strong> <span id="confirmedTimeText"></span>
       </div>
       <div id="unavailableTimeNotice" class="d-none alert alert-warning">
-        部分時間已被其他組別確認，無法選擇（已劃線標示）
+        部分時間已與其他組別有約，無法選擇（已劃線標示）
       </div>
       <div id="timeOptions"></div>
     </div>
@@ -194,7 +194,7 @@
               <input class="form-check-input" type="checkbox" id="time${i}" value="${opt}" 
                 ${disabled ? "disabled" : ""} />
               <label class="form-check-label ${labelClass}" for="time${i}">
-                ${opt} ${isUnavailable ? "(已被確認)" : ""}
+                ${opt} ${isUnavailable ? "(已被約)" : ""}
               </label>
             </div>`;
         }).join("");
