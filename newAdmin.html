@@ -15,6 +15,8 @@
     .table th, .table td { text-align: center; vertical-align: middle; }
     .time-selected-col { background-color: #f0f0f0 !important; }
     .settings-section { margin-bottom: 2rem; }
+    .time-confirmed-row td { background-color: #f0f0f0 !important; }
+    .confirm-btn { margin-top: 5px; font-size: 0.8rem; }
   </style>
 </head>
 <body class="container py-4">
@@ -170,6 +172,7 @@
             <p><strong>組長 Email：</strong>${d.leaderEmail || "-"}</p>
             <p><strong>組員：</strong>${(d.members || []).join(", ")}</p>
             <p><strong>時間：</strong>${(d.timeOptions || []).join(", ")}</p>
+            <p><strong>確認時間：</strong>${d.confirmedTime || "-"}</p>
             <p><strong>餐廳：</strong>${formatRestaurants(d.selectedRestaurants || [], d.customRestaurants || [])}</p>
             <p><strong>備註：</strong>${d.note || ""}</p>
             <p><a href="submit.html?group=${doc.id}" target="_blank">✏️ 前往編輯</a></p>
@@ -189,6 +192,22 @@
       return items.join(", ") || "-";
     }
 
+    async function toggleTimeConfirmation(groupId, time) {
+      const groupRef = db.collection("groups").doc(groupId);
+      const groupDoc = await groupRef.get();
+      const currentConfirmedTime = groupDoc.data().confirmedTime || null;
+      
+      if (currentConfirmedTime === time) {
+        // 取消確認
+        await groupRef.update({ confirmedTime: null });
+      } else {
+        // 確認新時間
+        await groupRef.update({ confirmedTime: time });
+      }
+      renderTimeMatrix();
+      loadGroups();
+    }
+
     async function renderTimeMatrix() {
       const settingsDoc = await db.collection("settings").doc("timeOptions").get();
       const allTimes = sortTimeStrings(settingsDoc.data()?.options || []);
@@ -197,8 +216,10 @@
         id: doc.id,
         name: doc.data().groupName,
         times: doc.data().timeOptions || [],
-        selected: doc.data().selectedTimes || []
+        selected: doc.data().selectedTimes || [],
+        confirmedTime: doc.data().confirmedTime || null
       }));
+      
       const table = document.getElementById("timeMatrixTable");
       const theadRow = table.querySelector("thead tr");
       theadRow.innerHTML = "<th>組別</th>";
@@ -209,15 +230,47 @@
         th.dataset.index = idx;
         theadRow.appendChild(th);
       });
+      
       const tbody = table.querySelector("tbody");
       tbody.innerHTML = "";
       const timeSelectionMap = {};
       allTimes.forEach(t => { timeSelectionMap[t] = false; });
+      
       groups.forEach(g => {
         const tr = document.createElement("tr");
+        tr.dataset.groupId = g.id;
+        
+        if (g.confirmedTime) {
+          tr.classList.add("time-confirmed-row");
+        }
+        
         const nameTd = document.createElement("td");
-        nameTd.textContent = g.name;
+        nameTd.innerHTML = `
+          <div>${g.name}</div>
+          <button class="btn btn-sm ${g.confirmedTime ? 'btn-success' : 'btn-outline-secondary'} confirm-btn">
+            ${g.confirmedTime ? '已確認' : '未確認'}
+          </button>
+        `;
         tr.appendChild(nameTd);
+        
+        const confirmBtn = nameTd.querySelector(".confirm-btn");
+        if (g.selected.length === 1) {
+          confirmBtn.addEventListener("click", async () => {
+            await toggleTimeConfirmation(g.id, g.confirmedTime ? null : g.selected[0]);
+          });
+        } else if (g.selected.length > 1) {
+          confirmBtn.title = "請先選擇單一時間";
+          confirmBtn.disabled = g.confirmedTime ? false : true;
+          if (g.confirmedTime) {
+            confirmBtn.addEventListener("click", async () => {
+              await toggleTimeConfirmation(g.id, null);
+            });
+          }
+        } else {
+          confirmBtn.title = "請先選擇時間";
+          confirmBtn.disabled = true;
+        }
+        
         allTimes.forEach(t => {
           const td = document.createElement("td");
           if (g.times.includes(t)) {
@@ -227,6 +280,17 @@
             checkbox.dataset.groupId = g.id;
             checkbox.dataset.time = t;
             if (checkbox.checked) timeSelectionMap[t] = true;
+            
+            // 如果已經確認了時間，只有確認的時間可以被選中
+            if (g.confirmedTime) {
+              checkbox.disabled = (t !== g.confirmedTime);
+              if (t === g.confirmedTime) {
+                checkbox.checked = true;
+              } else {
+                checkbox.checked = false;
+              }
+            }
+            
             checkbox.addEventListener("change", async () => {
               const groupRef = db.collection("groups").doc(g.id);
               const groupDoc = await groupRef.get();
@@ -245,8 +309,11 @@
           }
           tr.appendChild(td);
         });
+        
         tbody.appendChild(tr);
       });
+      
+      // 標記已選擇時間的列
       allTimes.forEach((t, idx) => {
         const th = theadRow.children[idx + 1];
         const cells = [...tbody.querySelectorAll(`tr td:nth-child(${idx + 2})`)];
